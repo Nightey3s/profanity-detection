@@ -1,0 +1,13 @@
+.git
+.gitignore
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.env
+.venv
+env/
+venv/
+ENV/
+*.log
+temp_*.wav

@@ -1,0 +1,45 @@
+version: '3.8'
+
+services:
+  # Main service configuration - automatically uses GPU if available
+  profanity-detector:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "7860:7860"
+    volumes:
+      - huggingface-cache:/root/.cache/huggingface
+      - ./:/app  # Mount current directory for development
+    environment:
+      - KMP_DUPLICATE_LIB_OK=TRUE
+    command: python profanity_detector.py
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped
+  
+  # Explicit CPU-only configuration for when GPU causes issues
+  profanity-detector-cpu:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "7860:7860"
+    volumes:
+      - huggingface-cache:/root/.cache/huggingface
+      - ./:/app  # Mount current directory for development
+    environment:
+      - KMP_DUPLICATE_LIB_OK=TRUE
+      - CUDA_VISIBLE_DEVICES=-1  # Disable CUDA
+    command: python profanity_detector.py
+    profiles:
+      - cpu-only
+    restart: unless-stopped
+
+volumes:
+  huggingface-cache:

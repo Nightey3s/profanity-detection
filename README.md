@@ -3,7 +3,7 @@
 A robust multimodal system for detecting and rephrasing profanity in both speech and text, leveraging advanced NLP models to ensure accurate filtering while preserving conversational context.
 
 ![Profanity Detection System](https://img.shields.io/badge/AI-NLP%20System-blue)
-![Python](https://img.shields.io/badge/Python-3.12%2B-green)
+![Python](https://img.shields.io/badge/Python-3.10%2B-green)
 ![Transformers](https://img.shields.io/badge/HuggingFace-Transformers-yellow)
 
 ## 📋 Features

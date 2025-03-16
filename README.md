@@ -12,6 +12,8 @@ Try the system without installation via our Hugging Face Spaces deployment:
 
 [![Hugging Face Spaces](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Spaces-blue)](https://huggingface.co/spaces/nightey3s/profanity-detection)
 
+<img src="https://briantham.com/assets/img/projects/qr-code/Profanity-Detection-huggingface-qr-code.svg?sanitize=true" alt="QR Code" width="300" />
+
 This live version leverages Hugging Face's ZeroGPU technology, which provides on-demand GPU acceleration for inference while optimising resource usage.
 
 ## 📋 Features

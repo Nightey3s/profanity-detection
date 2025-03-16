@@ -223,6 +223,14 @@ profanity-detection/
 └── README.md                # This file
 ```
 
+## Team Members
+
+- Brian Tham
+- Hong Ziyang
+- Nabil Zafran
+- Adrian Ian Wong
+- Lin Xiang Hong
+
 ## 📚 References
 
 - [HuggingFace Transformers](https://huggingface.co/docs/transformers/index)

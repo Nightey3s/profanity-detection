@@ -6,6 +6,14 @@ A robust multimodal system for detecting and rephrasing profanity in both speech
 ![Python](https://img.shields.io/badge/Python-3.10%2B-green)
 ![Transformers](https://img.shields.io/badge/HuggingFace-Transformers-yellow)
 
+## 🌐 Live Demo
+
+Try the system without installation via our Hugging Face Spaces deployment:
+
+[![Hugging Face Spaces](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Spaces-blue)](https://huggingface.co/spaces/nightey3s/profanity-detection)
+
+This live version leverages Hugging Face's ZeroGPU technology, which provides on-demand GPU acceleration for inference while optimising resource usage.
+
 ## 📋 Features
 
 - **Multimodal Analysis**: Process both written text and spoken audio
@@ -19,6 +27,7 @@ A robust multimodal system for detecting and rephrasing profanity in both speech
 - **Visual Highlighting**: Instantly identify problematic words with visual highlighting
 - **Toxicity Classification**: Automatically categorize content from "No Toxicity" to "Severe Toxicity"
 - **Performance Optimization**: Half-precision support for improved GPU memory efficiency
+- **Cloud Deployment**: Available as a hosted service on Hugging Face Spaces
 
 ## 🧠 Models Used
 
@@ -29,19 +38,29 @@ The system leverages four powerful models:
 3. **Speech-to-Text**: OpenAI's `Whisper` (large) - For transcribing spoken audio
 4. **Text-to-Speech**: Microsoft's `SpeechT5` - For converting rephrased text back to audio
 
-## 🔧 Installation
+## 🚀 Deployment Options
 
-### Prerequisites
+### Online Deployment (No Installation Required)
+
+Access the application directly through Hugging Face Spaces:
+- **URL**: [https://huggingface.co/spaces/nightey3s/profanity-detection](https://huggingface.co/spaces/nightey3s/profanity-detection)
+- **Technology**: Built with ZeroGPU for efficient GPU resource allocation
+- **Features**: All features of the full application accessible through your browser
+- **Source Code**: [GitHub Repository](https://github.com/Nightey3s/profanity-detection)
+
+### Local Installation
+
+#### Prerequisites
 
 - Python 3.10+
 - CUDA-compatible GPU recommended (but CPU mode works too)
 - FFmpeg for audio processing
 
-### Option 1: Using Conda (Recommended for Local Development)
+#### Option 1: Using Conda (Recommended for Local Development)
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/profanity-detection.git
+git clone https://github.com/Nightey3s/profanity-detection.git
 cd profanity-detection
 
 # Method A: Create environment from environment.yml (recommended)
@@ -69,11 +88,11 @@ conda env config vars set KMP_DUPLICATE_LIB_OK=TRUE
 conda activate profanity-detection  # Re-activate to apply the variable
 ```
 
-### Option 2: Using Docker
+#### Option 2: Using Docker
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/profanity-detection.git
+git clone https://github.com/Nightey3s/profanity-detection.git
 cd profanity-detection
 
 # Build and run the Docker container
@@ -82,25 +101,15 @@ docker-compose build --no-cache
 docker-compose up
 ```
 
-## 🚀 Usage
+## 🔧 Usage
 
-### Running the Application
+### Using the Online Interface (Hugging Face Spaces)
 
-```bash
-# Set environment variable to avoid OpenMP conflicts (if not set in conda config)
-# For Windows:
-set KMP_DUPLICATE_LIB_OK=TRUE
+1. Visit [https://huggingface.co/spaces/nightey3s/profanity-detection](https://huggingface.co/spaces/nightey3s/profanity-detection)
+2. The interface might take a moment to load on first access as it allocates resources
+3. Follow the same usage instructions as below, starting with "Initialize Models"
 
-# For Linux/Mac:
-export KMP_DUPLICATE_LIB_OK=TRUE
-
-# Run the application
-python profanity_detector.py
-```
-
-The Gradio interface will be accessible at http://127.0.0.1:7860 in your browser.
-
-### Using the Interface
+### Using the Local Interface
 
 1. **Initialise Models**
    - Click the "Initialize Models" button when you first open the interface
@@ -126,46 +135,6 @@ The Gradio interface will be accessible at http://127.0.0.1:7860 in your browser
    - Watch as your speech is transcribed, analyzed, and rephrased in real-time
    - Listen to the clean audio output
    - Click "Stop Real-time Processing" when finished
-
-## 🔧 Deployment Options
-
-### Local Deployment with Conda
-
-For the best development experience with fine-grained control:
-
-```bash
-# Create and configure environment
-conda env create -f environment.yml
-conda activate llm_project
-
-# Run with sharing enabled (accessible from other devices)
-python profanity_detector.py
-```
-
-### Docker Deployment (Production)
-
-For containerised deployment with predictable environment:
-
-#### Basic CPU Deployment
-```bash
-docker-compose up --build
-```
-
-#### GPU-Accelerated Deployment
-```bash
-# Automatic detection (recommended)
-docker-compose up --build
-
-# Or explicitly request GPU mode
-docker-compose up --build profanity-detector-gpu
-```
-
-No need to edit any configuration files - the system will automatically detect and use your GPU if available.
-
-#### Custom Port Configuration
-To change the default port (7860):
-1. Edit docker-compose.yml and change the port mapping (e.g., "8080:7860")
-2. Run `docker-compose up --build`
 
 ## ⚠️ Troubleshooting
 
@@ -230,18 +199,13 @@ If you encounter CUDA out of memory errors:
                memory: 4G  # Limit to 4GB of GPU memory
    ```
 
-### Docker-Specific Issues
+### Hugging Face Spaces-Specific Issues
 
-1. **Permission issues with mounted volumes**:
-   ```bash
-   # Fix permissions (Linux/Mac)
-   sudo chown -R $USER:$USER .
-   ```
+1. **Long initialization time**: The first time you access the Space, it may take longer to initialize as models are downloaded and cached.
 
-2. **No GPU access in container**:
-   - Verify NVIDIA Container Toolkit installation
-   - Check GPU driver compatibility
-   - Run `nvidia-smi` on the host to confirm GPU availability
+2. **Timeout errors**: If the model takes too long to process your request, try again with shorter text or audio inputs.
+
+3. **Browser compatibility**: Ensure your browser allows microphone access for audio recording features.
 
 ### First-Time Slowness
 
@@ -265,6 +229,7 @@ profanity-detection/
 - [OpenAI Whisper](https://github.com/openai/whisper)
 - [Microsoft SpeechT5](https://huggingface.co/microsoft/speecht5_tts)
 - [Gradio Documentation](https://gradio.app/docs/)
+- [Hugging Face Spaces](https://huggingface.co/spaces)
 
 ## 📝 License
 
@@ -274,3 +239,4 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 - This project utilises models from HuggingFace Hub, Microsoft, and OpenAI
 - Inspired by research in content moderation and responsible AI
+- Hugging Face for providing the Spaces platform with ZeroGPU technology

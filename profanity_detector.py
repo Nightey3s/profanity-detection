@@ -16,13 +16,6 @@ from html import escape
 import traceback
 import spaces # Required for Hugging Face ZeroGPU compatibility
 
-# ZeroGPU COMPATIBILITY NOTES:
-# The @spaces.GPU decorators throughout this code enable compatibility with Hugging Face ZeroGPU.
-# - They request GPU resources only when needed and release them after function completion
-# - They have no effect when running in local environments or standard GPU Spaces
-# - Custom durations can be specified for functions requiring longer processing times
-# - For local development, you'll need: pip install huggingface_hub[spaces]
-
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -31,9 +24,20 @@ logging.basicConfig(
 )
 logger = logging.getLogger('profanity_detector')
 
-# Define device at the top of the script (global scope)
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-logger.info(f"Using device: {device}")
+# Detect if we're running in a ZeroGPU environment
+IS_ZEROGPU = os.environ.get("SPACE_RUNTIME_STATELESS", "0") == "1"
+if os.environ.get("SPACES_ZERO_GPU") is not None:
+    IS_ZEROGPU = True
+
+# Define device strategy that works in both environments
+if IS_ZEROGPU:
+    # In ZeroGPU: always initialize on CPU, will use GPU only in @spaces.GPU functions
+    device = torch.device("cpu")
+    logger.info("ZeroGPU environment detected. Using CPU for initial loading.")
+else:
+    # For local runs: use CUDA if available
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    logger.info(f"Local environment. Using device: {device}")
 
 # Global variables for models
 profanity_model = None
@@ -63,15 +67,18 @@ def load_models():
         PROFANITY_MODEL = "parsawar/profanity_model_3.1"
         profanity_tokenizer = AutoTokenizer.from_pretrained(PROFANITY_MODEL)
         
-        # Load model with memory optimization using half-precision
-        profanity_model = AutoModelForSequenceClassification.from_pretrained(PROFANITY_MODEL)
+        # Load model without moving to CUDA directly
+        profanity_model = AutoModelForSequenceClassification.from_pretrained(
+            PROFANITY_MODEL,
+            device_map=None,  # Stay on CPU for now
+            low_cpu_mem_usage=True
+        )
         
-        # Move to GPU if available and optimize with half-precision where possible
-        if torch.cuda.is_available():
+        # Only move to device if NOT in ZeroGPU mode
+        if not IS_ZEROGPU and torch.cuda.is_available():
             profanity_model = profanity_model.to(device)
-            # Convert to half precision to save memory (if possible)
             try:
-                profanity_model = profanity_model.half()  # Convert to FP16
+                profanity_model = profanity_model.half()
                 logger.info("Successfully converted profanity model to half precision")
             except Exception as e:
                 logger.warning(f"Could not convert to half precision: {str(e)}")
@@ -80,39 +87,55 @@ def load_models():
         T5_MODEL = "s-nlp/t5-paranmt-detox"
         t5_tokenizer = AutoTokenizer.from_pretrained(T5_MODEL)
         
-        # Load model with memory optimization
-        t5_model = AutoModelForSeq2SeqLM.from_pretrained(T5_MODEL)
+        t5_model = AutoModelForSeq2SeqLM.from_pretrained(
+            T5_MODEL,
+            device_map=None,  # Stay on CPU for now
+            low_cpu_mem_usage=True
+        )
         
-        # Move to GPU if available and optimize with half-precision where possible
-        if torch.cuda.is_available():
+        # Only move to device if NOT in ZeroGPU mode
+        if not IS_ZEROGPU and torch.cuda.is_available():
             t5_model = t5_model.to(device)
-            # Convert to half precision to save memory (if possible)
             try:
-                t5_model = t5_model.half()  # Convert to FP16
+                t5_model = t5_model.half()
                 logger.info("Successfully converted T5 model to half precision")
             except Exception as e:
                 logger.warning(f"Could not convert to half precision: {str(e)}")
         
         logger.info("Loading Whisper speech-to-text model...")
-        whisper_model = whisper.load_model("large")
-        if torch.cuda.is_available():
+        # Always load on CPU in ZeroGPU mode
+        #whisper_model = whisper.load_model("medium" if IS_ZEROGPU else "large", device="cpu")
+        whisper_model = whisper.load_model("large-v2", device="cpu")
+        
+        # Only move to device if NOT in ZeroGPU mode
+        if not IS_ZEROGPU and torch.cuda.is_available():
             whisper_model = whisper_model.to(device)
             
         logger.info("Loading Text-to-Speech model...")
         TTS_MODEL = "microsoft/speecht5_tts"
         tts_processor = SpeechT5Processor.from_pretrained(TTS_MODEL)
-        # Load TTS models without automatic device mapping
-        tts_model = SpeechT5ForTextToSpeech.from_pretrained(TTS_MODEL)
-        vocoder = SpeechT5HifiGan.from_pretrained("microsoft/speecht5_hifigan")
         
-        # Move models to appropriate device
-        if torch.cuda.is_available():
+        tts_model = SpeechT5ForTextToSpeech.from_pretrained(
+            TTS_MODEL,
+            device_map=None,  # Stay on CPU for now
+            low_cpu_mem_usage=True
+        )
+        
+        vocoder = SpeechT5HifiGan.from_pretrained(
+            "microsoft/speecht5_hifigan",
+            device_map=None,  # Stay on CPU for now
+            low_cpu_mem_usage=True
+        )
+        
+        # Only move to device if NOT in ZeroGPU mode
+        if not IS_ZEROGPU and torch.cuda.is_available():
             tts_model = tts_model.to(device)
             vocoder = vocoder.to(device)
         
-        # Speaker embeddings for TTS
+        # Speaker embeddings - always on CPU for ZeroGPU
         speaker_embeddings = torch.zeros((1, 512))
-        if torch.cuda.is_available():
+        # Only move to device if NOT in ZeroGPU mode
+        if not IS_ZEROGPU and torch.cuda.is_available():
             speaker_embeddings = speaker_embeddings.to(device)
             
         models_loaded = True
@@ -126,7 +149,6 @@ def load_models():
 
 # ZeroGPU decorator: Requests GPU resources when function is called and releases them when completed.
 # This enables efficient GPU sharing in Hugging Face Spaces while having no effect in local environments.
-@spaces.GPU
 @spaces.GPU
 def detect_profanity(text: str, threshold: float = 0.5):
     """
@@ -145,8 +167,17 @@ def detect_profanity(text: str, threshold: float = 0.5):
     try:
         # Detect profanity and score
         inputs = profanity_tokenizer(text, return_tensors="pt", truncation=True, max_length=512)
-        if torch.cuda.is_available():
-            inputs = inputs.to(device)
+        
+        # In ZeroGPU, move to GPU here inside the spaces.GPU function
+        # For local environments, it might already be on the correct device
+        current_device = device
+        if IS_ZEROGPU and torch.cuda.is_available():
+            current_device = torch.device("cuda")
+            inputs = inputs.to(current_device)
+            # Only in ZeroGPU mode, we need to move the model to GPU inside the function
+            profanity_model.to(current_device)
+        elif torch.cuda.is_available():  # Local environment with CUDA
+            inputs = inputs.to(current_device)
             
         with torch.no_grad():
             outputs = profanity_model(**inputs).logits
@@ -164,7 +195,7 @@ def detect_profanity(text: str, threshold: float = 0.5):
                     
                 word_inputs = profanity_tokenizer(word, return_tensors="pt", truncation=True, max_length=512)
                 if torch.cuda.is_available():
-                    word_inputs = word_inputs.to(device)
+                    word_inputs = word_inputs.to(current_device)
                     
                 with torch.no_grad():
                     word_outputs = profanity_model(**word_inputs).logits
@@ -173,6 +204,10 @@ def detect_profanity(text: str, threshold: float = 0.5):
                 
                 if word_score > threshold:
                     profane_words.append(word.lower())
+
+        # Move model back to CPU if in ZeroGPU mode - to free GPU memory
+        if IS_ZEROGPU and torch.cuda.is_available():
+            profanity_model.to(torch.device("cpu"))
 
         # Create highlighted version of the text
         highlighted_text = create_highlighted_text(text, profane_words)
@@ -188,6 +223,12 @@ def detect_profanity(text: str, threshold: float = 0.5):
     except Exception as e:
         error_msg = f"Error in profanity detection: {str(e)}"
         logger.error(error_msg)
+        # Make sure model is on CPU if in ZeroGPU mode - to free GPU memory
+        if IS_ZEROGPU and torch.cuda.is_available():
+            try:
+                profanity_model.to(torch.device("cpu"))
+            except:
+                pass
         return {"error": error_msg, "text": text, "score": 0, "profanity": False}
 
 def create_highlighted_text(text, profane_words):
@@ -218,8 +259,16 @@ def rephrase_profanity(text):
     try:
         # Rephrase using the detoxification model
         inputs = t5_tokenizer(text, return_tensors="pt", truncation=True, max_length=512)
-        if torch.cuda.is_available():
-            inputs = inputs.to(device)
+        
+        # In ZeroGPU, move to GPU here inside the spaces.GPU function
+        current_device = device
+        if IS_ZEROGPU and torch.cuda.is_available():
+            current_device = torch.device("cuda")
+            inputs = inputs.to(current_device)
+            # Only in ZeroGPU mode, we need to move the model to GPU inside the function
+            t5_model.to(current_device)
+        elif torch.cuda.is_available():  # Local environment with CUDA
+            inputs = inputs.to(current_device)
         
         # Use more conservative generation settings with error handling
         try:
@@ -238,6 +287,10 @@ def rephrase_profanity(text):
                 logger.warning(f"T5 model produced unusable output: '{rephrased_text}'")
                 return text  # Return original if output is too short
                 
+            # Move model back to CPU if in ZeroGPU mode - to free GPU memory
+            if IS_ZEROGPU and torch.cuda.is_available():
+                t5_model.to(torch.device("cpu"))
+                
             return rephrased_text.strip()
             
         except RuntimeError as e:
@@ -252,6 +305,11 @@ def rephrase_profanity(text):
                     early_stopping=True
                 )
                 rephrased_text = t5_tokenizer.decode(outputs[0], skip_special_tokens=True)
+                
+                # Move model back to CPU if in ZeroGPU mode - to free GPU memory
+                if IS_ZEROGPU and torch.cuda.is_available():
+                    t5_model.to(torch.device("cpu"))
+                    
                 return rephrased_text.strip()
             else:
                 raise e  # Re-raise if it's not a memory issue
@@ -259,6 +317,12 @@ def rephrase_profanity(text):
     except Exception as e:
         error_msg = f"Error in rephrasing: {str(e)}"
         logger.error(error_msg)
+        # Make sure model is on CPU if in ZeroGPU mode - to free GPU memory
+        if IS_ZEROGPU and torch.cuda.is_available():
+            try:
+                t5_model.to(torch.device("cpu"))
+            except:
+                pass
         return text  # Return original text if rephrasing fails
 
 @spaces.GPU
@@ -275,18 +339,36 @@ def text_to_speech(text):
         
         # Process the text input
         inputs = tts_processor(text=text, return_tensors="pt")
-        if torch.cuda.is_available():
-            inputs = inputs.to(device)
+        
+        # In ZeroGPU, move to GPU here inside the spaces.GPU function
+        current_device = device
+        if IS_ZEROGPU and torch.cuda.is_available():
+            current_device = torch.device("cuda")
+            inputs = inputs.to(current_device)
+            # Only in ZeroGPU mode, we need to move the models to GPU inside the function
+            tts_model.to(current_device)
+            vocoder.to(current_device)
+            speaker_embeddings_local = speaker_embeddings.to(current_device)
+        elif torch.cuda.is_available():  # Local environment with CUDA
+            inputs = inputs.to(current_device)
+            speaker_embeddings_local = speaker_embeddings
+        else:
+            speaker_embeddings_local = speaker_embeddings
         
         # Generate speech with a fixed speaker embedding
         speech = tts_model.generate_speech(
             inputs["input_ids"], 
-            speaker_embeddings, 
+            speaker_embeddings_local, 
             vocoder=vocoder
         )
         
         # Convert from PyTorch tensor to NumPy array
         speech_np = speech.cpu().numpy()
+        
+        # Move models back to CPU if in ZeroGPU mode - to free GPU memory
+        if IS_ZEROGPU and torch.cuda.is_available():
+            tts_model.to(torch.device("cpu"))
+            vocoder.to(torch.device("cpu"))
         
         # Save as WAV file (sampling rate is 16kHz for SpeechT5)
         write_wav(temp_file, 16000, speech_np)
@@ -295,6 +377,13 @@ def text_to_speech(text):
     except Exception as e:
         error_msg = f"Error in text-to-speech conversion: {str(e)}"
         logger.error(error_msg)
+        # Make sure models are on CPU if in ZeroGPU mode - to free GPU memory
+        if IS_ZEROGPU and torch.cuda.is_available():
+            try:
+                tts_model.to(torch.device("cpu"))
+                vocoder.to(torch.device("cpu"))
+            except:
+                pass
         return None
 
 def text_analysis(input_text, threshold=0.5):
@@ -365,9 +454,18 @@ def analyze_audio(audio_path, threshold=0.5):
         return "No audio provided.", None, None
         
     try:
+        # In ZeroGPU mode, models need to be moved to GPU
+        if IS_ZEROGPU and torch.cuda.is_available():
+            current_device = torch.device("cuda")
+            whisper_model.to(current_device)
+        
         # Transcribe audio
         result = whisper_model.transcribe(audio_path, fp16=torch.cuda.is_available())
         text = result["text"]
+        
+        # Move whisper model back to CPU if in ZeroGPU mode
+        if IS_ZEROGPU and torch.cuda.is_available():
+            whisper_model.to(torch.device("cpu"))
         
         # Detect profanity with user-defined threshold
         analysis = detect_profanity(text, threshold=threshold)
@@ -395,6 +493,12 @@ def analyze_audio(audio_path, threshold=0.5):
     except Exception as e:
         error_msg = f"Error in audio analysis: {str(e)}\n{traceback.format_exc()}"
         logger.error(error_msg)
+        # Make sure models are on CPU if in ZeroGPU mode
+        if IS_ZEROGPU and torch.cuda.is_available():
+            try:
+                whisper_model.to(torch.device("cpu"))
+            except:
+                pass
         return error_msg, None, None
 
 # Global variables to store streaming results
@@ -460,9 +564,18 @@ def process_stream_chunk(audio_chunk):
             stream_results["profanity_info"] = "Error: Failed to create audio file for processing"
             return stream_results["transcript"], stream_results["profanity_info"], stream_results["clean_text"], stream_results["audio_output"]
             
+        # In ZeroGPU mode, move whisper model to GPU
+        if IS_ZEROGPU and torch.cuda.is_available():
+            current_device = torch.device("cuda")
+            whisper_model.to(current_device)
+            
         # Process with Whisper
         result = whisper_model.transcribe(temp_file, fp16=torch.cuda.is_available())
         transcript = result["text"].strip()
+        
+        # Move whisper model back to CPU if in ZeroGPU mode
+        if IS_ZEROGPU and torch.cuda.is_available():
+            whisper_model.to(torch.device("cpu"))
         
         # Skip processing if transcript is empty
         if not transcript:
@@ -516,6 +629,17 @@ def process_stream_chunk(audio_chunk):
     except Exception as e:
         error_msg = f"Error processing streaming audio: {str(e)}\n{traceback.format_exc()}"
         logger.error(error_msg)
+        
+        # Make sure all models are on CPU if in ZeroGPU mode
+        if IS_ZEROGPU and torch.cuda.is_available():
+            try:
+                whisper_model.to(torch.device("cpu"))
+                profanity_model.to(torch.device("cpu"))
+                t5_model.to(torch.device("cpu"))
+                tts_model.to(torch.device("cpu"))
+                vocoder.to(torch.device("cpu"))
+            except:
+                pass
         
         # Update profanity info with error message
         stream_results["profanity_info"] = f"Error: {str(e)}"

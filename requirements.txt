@@ -8,3 +8,4 @@ transformers
 pillow
 sentencepiece
 spaces
+accelerate

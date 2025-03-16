@@ -14,6 +14,14 @@ import queue
 from scipy.io.wavfile import write as write_wav
 from html import escape
 import traceback
+import spaces # Required for Hugging Face ZeroGPU compatibility
+
+# ZeroGPU COMPATIBILITY NOTES:
+# The @spaces.GPU decorators throughout this code enable compatibility with Hugging Face ZeroGPU.
+# - They request GPU resources only when needed and release them after function completion
+# - They have no effect when running in local environments or standard GPU Spaces
+# - Custom durations can be specified for functions requiring longer processing times
+# - For local development, you'll need: pip install huggingface_hub[spaces]
 
 # Configure logging
 logging.basicConfig(
@@ -116,6 +124,10 @@ def load_models():
         logger.error(error_msg)
         return error_msg
 
+# ZeroGPU decorator: Requests GPU resources when function is called and releases them when completed.
+# This enables efficient GPU sharing in Hugging Face Spaces while having no effect in local environments.
+@spaces.GPU
+@spaces.GPU
 def detect_profanity(text: str, threshold: float = 0.5):
     """
     Detect profanity in text with adjustable threshold
@@ -195,6 +207,7 @@ def create_highlighted_text(text, profane_words):
     highlighted = re.sub(pattern, highlight_match, text, flags=re.IGNORECASE)
     return highlighted
 
+@spaces.GPU
 def rephrase_profanity(text):
     """
     Rephrase text containing profanity
@@ -248,6 +261,7 @@ def rephrase_profanity(text):
         logger.error(error_msg)
         return text  # Return original text if rephrasing fails
 
+@spaces.GPU
 def text_to_speech(text):
     """
     Convert text to speech using SpeechT5
@@ -337,6 +351,9 @@ def text_analysis(input_text, threshold=0.5):
         logger.error(error_msg)
         return error_msg, None, None
 
+# ZeroGPU decorator with custom duration: Allocates GPU for up to 120 seconds to handle longer audio processing.
+# Longer durations ensure processing isn't cut off, while shorter durations improve queue priority.
+@spaces.GPU(duration=120)
 def analyze_audio(audio_path, threshold=0.5):
     """
     Analyze audio for profanity with adjustable threshold
@@ -388,6 +405,7 @@ stream_results = {
     "audio_output": None
 }
 
+@spaces.GPU
 def process_stream_chunk(audio_chunk):
     """Process an audio chunk from the streaming interface"""
     global stream_results, processing_active

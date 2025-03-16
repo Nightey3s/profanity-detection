@@ -35,7 +35,7 @@ The system leverages four powerful models:
 
 1. **Profanity Detection**: `parsawar/profanity_model_3.1` - A RoBERTa-based model trained for offensive language detection
 2. **Content Refinement**: `s-nlp/t5-paranmt-detox` - A T5-based model for rephrasing offensive language
-3. **Speech-to-Text**: OpenAI's `Whisper` (large) - For transcribing spoken audio
+3. **Speech-to-Text**: OpenAI's `Whisper` (large-v2) - For transcribing spoken audio
 4. **Text-to-Speech**: Microsoft's `SpeechT5` - For converting rephrased text back to audio
 
 ## 🚀 Deployment Options
